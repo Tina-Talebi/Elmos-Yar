@@ -3,240 +3,331 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-import arabic_reshaper
-from bidi.algorithm import get_display
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
+import arabic_reshaper
+from bidi.algorithm import get_display
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+# --- 1. CONFIG & STYLING ---
+st.set_page_config(page_title="علموص یار - نسخه نهایی", layout="wide")
 
-# --- 1. PAGE CONFIGURATION ---
-st.set_page_config(page_title="علموص یار - پیشرفته", layout="wide")
-
-# RTL and Persian Font Styling
 st.markdown("""
     <style>
     @import url('https://v1.fontapi.ir/css/Vazir');
     * { font-family: 'Vazir', sans-serif; text-align: right; }
     .main { direction: rtl; }
-    [data-testid="stSidebar"] { direction: rtl; }
-    .stMetric { text-align: center; }
-    .stSlider { direction: ltr; } 
+    div[data-testid="stMetricValue"] { text-align: center; color: #1f77b4; }
+    .stSlider { direction: ltr; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA LOADING & ENHANCED PROCESSING ---
+# --- 2. DATA PIPELINE ---
 @st.cache_data
-def load_and_standardize_data():
-    try:
-        df = pd.read_csv('extracted_reviews_v3_final.csv')
-        
-        # [Phase 2] Standardization [cite: 413]
-        rating_cols = ['rating_1', 'rating_2', 'rating_3', 'rating_4', 'rating_5', 'rating_6']
-        for col in rating_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(df[col].mean() if not df[col].empty else 0)
-        
-        # Clean Professor Names [cite: 414]
-        df['professor_name_raw'] = df['professor_name_raw'].str.strip().str.replace('دکتر ', '')
-        
-        # [Phase 4.3.1] Simple Persian Sentiment Analysis [cite: 440]
-        pos_words = ['خوب', 'عالی', 'مهربان', 'منصف', 'تسلط', 'بهترین', 'کمک']
-        neg_words = ['بد', 'ضعیف', 'سختگیر', 'بی نظم', 'فشار', 'افتضاح', 'خسته']
-        
-        def get_sentiment(text):
-            if pd.isna(text): return 0
-            score = 0
-            for w in pos_words: score += text.count(w)
-            for w in neg_words: score -= text.count(w)
-            return score / (len(text.split()) + 1)
-            
-        df['sentiment_score'] = df['comments'].apply(get_sentiment)
-        return df
-    except Exception as e:
-        st.error(f"⚠️ خطا در بارگذاری داده: {e}")
-        return pd.DataFrame()
+def load_data():
+    df = pd.read_csv('reviews_sentiment_analysis.csv')
+    rating_cols = ['rating_1', 'rating_2', 'rating_3', 'rating_4', 'rating_5', 'rating_6']
+    df[rating_cols] = df[rating_cols].apply(pd.to_numeric, errors='coerce').fillna(df[rating_cols].mean())
+    sent_map = {'positive': 1, 'neutral': 0.5, 'negative': 0}
+    df['sent_num'] = df['final_sentiment'].map(sent_map)
+    return df
 
-df = load_and_standardize_data()
+df = load_data()
 
-# --- 3. MACHINE LEARNING LOGIC ---
-
-# [Phase 4.3.4] Unsupervised: Clustering with PCA [cite: 481]
-def get_professor_clusters(data):
-    # Grouping features by professor
-    prof_data = data.groupby('professor_name_raw').agg({
-        'rating_1': 'mean', 'rating_3': 'mean', 'sentiment_score': 'mean'
+# --- 3. ML & ANALYTIC ENGINES ---
+def run_clustering(data):
+    features = data.groupby('professor_name_standard').agg({
+        'rating_1': 'mean', 'rating_3': 'mean', 'sent_num': 'mean'
     })
-    
     scaler = StandardScaler()
-    scaled = scaler.fit_transform(prof_data)
-    
-    # KMeans
+    scaled = scaler.fit_transform(features)
     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
-    prof_data['Cluster'] = kmeans.fit_predict(scaled)
-    
-    # PCA for 2D visualization 
+    features['Cluster'] = kmeans.fit_predict(scaled)
     pca = PCA(n_components=2)
     pca_res = pca.fit_transform(scaled)
-    prof_data['PCA1'] = pca_res[:, 0]
-    prof_data['PCA2'] = pca_res[:, 1]
-    
-    cluster_map = {0: "سخت‌گیر/جدی", 1: "محبوب/منصف", 2: "معمولی"}
-    prof_data['Cluster_Label'] = prof_data['Cluster'].map(cluster_map)
-    return prof_data
-
-# [Phase 4.3.3] Supervised: Predicting Success Score [cite: 464]
-def train_prediction_model(data):
-    features = ['rating_2', 'rating_3', 'rating_4', 'rating_5', 'sentiment_score']
-    X = data[features]
-    y = data['rating_1'] # Target: Teaching Quality
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    model = RandomForestRegressor(n_estimators=50)
-    model.fit(X_train, y_train)
-    return model
+    features['PCA1'], features['PCA2'] = pca_res[:, 0], pca_res[:, 1]
+    cluster_names = {0: "سخت‌گیر (کیفیت بالا)", 1: "محبوب و خوش‌نمره", 2: "معمولی / خنثی"}
+    features['Persona'] = features['Cluster'].map(cluster_names)
+    return features
 
 # --- 4. NAVIGATION ---
-st.sidebar.title("🔍 منوی علموص یار")
-page = st.sidebar.radio("برو به", ["📊 نمای کلی", "👤 پروفایل استاد", "⚖️ مقایسه اساتید", "🤖 پیشنهاد دهنده", "🧠 تحلیل‌های پیشرفته (ML)"])
+st.sidebar.title("🔍 منوی هوشمند")
+menu = st.sidebar.radio("انتخاب کنید:", 
+    ["📊 داشبورد آماری", "👤 تحلیل اساتید", "طبقه بندی اساتید","👤 پروفایل استاد","مقایسه اساتید", "📈 روندها و همبستگی","🏆 پیشنهاد دهنده"])
 
-if not df.empty:
-    # --- PAGE 1: OVERVIEW ---
-    if page == "📊 نمای کلی":
-        st.title("داشبورد تحلیلی اساتید علموص")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("تعداد نظرات", len(df))
-        col2.metric("تعداد اساتید", df['professor_name_raw'].nunique())
-        col3.metric("میانگین رضایت", f"{df['rating_1'].mean():.2f}/10")
+if menu == "📊 داشبورد آماری":
+    st.title("📈 وضعیت کلی پایگاه داده علموص یار")
+    
+    st.markdown("""
+        <style>
+        [data-testid="stMetricValue"] { text-align: right !important; direction: rtl !important; }
+        [data-testid="stMetricLabel"] { text-align: right !important; direction: rtl !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
-        fig_hist = px.histogram(df, x='rating_1', title="توزیع امتیاز تدریس", labels={'rating_1': 'امتیاز'})
-        st.plotly_chart(fig_hist, use_container_width=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("تعداد کل نظرات", f"{len(df):,}")
+    with c2:
+        st.metric("تعداد اساتید منحصر به فرد", f"{df['professor_name_standard'].nunique():,}")
+    with c3:
+        st.metric("میانگین کل رضایت", f"{df['rating_mean'].mean():.2f}")
 
-    # --- PAGE 2: PROFESSOR PROFILE ---
-    elif page == "👤 پروفایل استاد":
-        prof = st.selectbox("استاد را انتخاب کنید:", df['professor_name_raw'].unique())
-        p_df = df[df['professor_name_raw'] == prof]
-        
-        st.header(f"پروفایل: {prof}")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("تحلیل ابعاد آموزشی")
-            categories = ['تدریس', 'اخلاق', 'نمره دهی', 'سختی', 'وضوح', 'حمایت']
-            values = p_df[['rating_1', 'rating_2', 'rating_3', 'rating_4', 'rating_5', 'rating_6']].mean().values
-            fig_radar = go.Figure(data=go.Scatterpolar(r=values, theta=categories, fill='toself'))
-            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 10])))
-            st.plotly_chart(fig_radar)
+    st.divider()
+
+    col_left, col_right = st.columns(2)
+
+    with col_right:
+        st.subheader("توزیع نظرات در دانشکده‌ها")
+
+        dept_counts = df['department'].value_counts().reset_index()
+        dept_counts.columns = ['department_en', 'count']
+
+        dept_counts = dept_counts.head(10)
+
+        fig_dept = px.bar(
+            dept_counts,
+            x='count',
+            y='department_en',
+            orientation='h',
+            color='count',
+            color_continuous_scale='Blues'
+        )
+
+        fig_dept.update_layout(
+            font=dict(family="Arial", size=14),
+            xaxis_title="تعداد",
+            yaxis_title="دانشکده",
             
-        with c2:
-            st.subheader("وضعیت نمره‌دهی")
-            # Custom pie chart for grading [cite: 536]
-            grade_counts = p_df['grading'].value_counts()
-            fig_pie = px.pie(values=grade_counts.values, names=grade_counts.index, hole=.3)
-            st.plotly_chart(fig_pie)
-    # --- PAGE 3: COMPARISON ---
-    elif page == "⚖️ مقایسه اساتید":
-        st.title("⚖️ بخش مقایسه اساتید")
-        st.write("در این بخش می‌توانید عملکرد چند استاد را در کنار هم بررسی کنید.")
+            coloraxis_colorbar=dict(
+                title="تعداد"
+            )
+        )
 
-        # انتخاب اساتید برای مقایسه
+        st.plotly_chart(fig_dept, use_container_width=True)
+    with col_left:
+        st.subheader("تحلیل حس کلی دانشگاه")
+        
+        sent_counts = df['final_sentiment'].value_counts().reset_index()
+        sent_counts.columns = ['حس', 'تعداد']
+        
+        name_map = {'positive': 'مثبت', 'neutral': 'خنثی', 'negative': 'منفی'}
+        
+        def prepare_labels(text):
+            persian_name = name_map.get(text, text)
+            return get_display(persian_name)
+
+        sent_counts['label'] = sent_counts['حس'].apply(prepare_labels)
+
+        fig_pie = px.pie(
+            sent_counts, 
+            values='تعداد', 
+            names='label', 
+            hole=0.4,
+            color='حس', 
+            color_discrete_map={'positive':'#2ecc71', 'neutral':'#bdc3c7', 'negative':'#e74c3c'}
+        )
+
+        fig_pie.update_layout(
+            font=dict(size=16),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=14)
+            )
+        )
+        
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    st.subheader("📅 روند مشارکت دانشجویان در ترم‌های مختلف")
+    term_trend = df.groupby('term')['rating_mean'].count().reset_index()
+    term_trend.columns = ['ترم', 'تعداد نظرات']
+    fig_line = px.line(term_trend, x='ترم', y='تعداد نظرات', markers=True)
+    st.plotly_chart(fig_line, use_container_width=True)
+elif menu == "طبقه بندی اساتید":
+    st.title("طبقه بندی اساتید")
+    
+    st.subheader("خوشه‌بندی اساتید بر اساس شباهت")
+    
+    c_df = run_clustering(df)
+    fig_cluster = px.scatter(c_df, x='PCA1', y='PCA2', color='Persona', hover_name=c_df.index)
+    st.plotly_chart(fig_cluster, use_container_width=True)
+
+    st.subheader("تحلیل اهمیت ویژگی‌ها")
+    X = df[['rating_2', 'rating_3', 'rating_4', 'rating_5', 'sent_num']]
+    y = df['rating_1']
+    rf = RandomForestRegressor(n_estimators=100).fit(X, y)
+    feat_imp = pd.Series(rf.feature_importances_, index=['اخلاق', 'نمره‌دهی', 'سختی', 'وضوح', 'حس مثبت']).sort_values()
+    st.bar_chart(feat_imp)
+elif menu == "👤 پروفایل استاد":
+    st.title("👤 تحلیل عملکرد استاد")
+    
+    prof_name = st.selectbox("نام استاد را انتخاب کنید:", sorted(df['professor_name_standard'].unique()))
+    prof_df = df[df['professor_name_standard'] == prof_name]
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+            st.subheader("نمودار راداری امتیازات") 
+            categories = ['تدریس', 'اخلاق', 'نمره دهی', 'سختی', 'وضوح', 'حمایت']
+            values = prof_df[['rating_1', 'rating_2', 'rating_3', 'rating_4', 'rating_5', 'rating_6']].mean().values
+            fig = go.Figure(data=go.Scatterpolar(r=values, theta=categories, fill='toself'))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 10])))
+            st.plotly_chart(fig)
+
+    with col2:
+        st.subheader("تحلیل حس نظرات (Sentiment)")
+        
+    
+        sent_map = {'positive': 1, 'neutral': 0, 'negative': -1}
+        prof_df['sent_numeric'] = prof_df['final_sentiment'].map(sent_map)
+        avg_sent = prof_df['sent_numeric'].mean()
+        
+        st.metric("شاخص رضایت دانشجویان", f"{avg_sent:+.2f}", 
+                  help="اعداد مثبت نشان‌دهنده رضایت و اعداد منفی نشان‌دهنده نارضایتی هستند.")
+
+        st.subheader("کلمات پرتکرار در نظرات")
+        text = " ".join(str(c) for c in prof_df['comments'] if pd.notna(c))
+        fa_stopwords = set([
+            'و', 'در', 'به', 'از', 'که', 'این', 'است', 'را', 'با', 'یک', 'برای', 
+            'آن', 'شود', 'شده', 'بود', 'داشت', 'هم', 'تا', 'می', 'کند', 'کرد', 
+            'دارد', 'همه', 'اما', 'اگر', 'دهد', 'خیلی', 'بودن', 'نیست', 'هست', 'کس'
+        ])        
+        if text.strip():
+            reshaped_text = arabic_reshaper.reshape(text)
+            bidi_text = get_display(reshaped_text)
+         
+            processed_stopwords = set([get_display(arabic_reshaper.reshape(sw)) for sw in fa_stopwords])
+
+            try:
+                wc = WordCloud(
+                    font_path='Vazir.ttf', 
+                    background_color="white", 
+                    width=800,
+                    height=450,
+                    stopwords=processed_stopwords, 
+                    collocations=False 
+                ).generate(bidi_text)
+                
+                fig_wc, ax = plt.subplots(figsize=(10, 6))
+                ax.imshow(wc, interpolation='bilinear')
+                ax.axis("off")
+                st.pyplot(fig_wc)
+                
+            except Exception as e:
+                st.error(f"خطا در تولید ابر کلمات: {e}")
+
+    st.divider()
+    st.subheader("📊 توزیع احساسات بر اساس مدل هوش مصنوعی")
+    sent_counts = prof_df['final_sentiment'].value_counts().reset_index()
+    fig_sent = px.bar(
+        sent_counts, x='final_sentiment', y='count', 
+        color='final_sentiment',
+        color_discrete_map={'positive':'green', 'neutral':'gray', 'negative':'red'},
+        labels={'count': 'تعداد نظرات', 'final_sentiment': 'نوع حس'}
+    )
+    st.plotly_chart(fig_sent, use_container_width=True)
+elif menu == "مقایسه اساتید":
+        st.title("⚖️ مقایسه تخصصی اساتید")
+        
         selected_profs = st.multiselect(
-            "اساتید مورد نظر را انتخاب کنید (حداکثر ۳ مورد)", 
-            options=sorted(df['professor_name_raw'].unique()), 
+            "اساتید مورد نظر را انتخاب کنید (حداکثر ۳ مورد):", 
+            options=sorted(df['professor_name_standard'].unique()), 
             max_selections=3
         )
         
         if selected_profs:
-            # فیلتر کردن داده‌ها بر اساس اساتید انتخاب شده
-            compare_df = df[df['professor_name_raw'].isin(selected_profs)]
-            
-            # محاسبه میانگین امتیازات برای هر استاد
-            compare_stats = compare_df.groupby('professor_name_raw').agg({
-                'rating_1': 'mean', # تدریس
-                'rating_2': 'mean', # اخلاق
-                'rating_3': 'mean', # نمره دهی
-                'sentiment_score': 'mean' # حس نظرات
+            compare_df = df[df['professor_name_standard'].isin(selected_profs)].groupby('professor_name_standard').agg({
+                'rating_1': 'mean', 'rating_2': 'mean', 'rating_3': 'mean', 'rating_4': 'mean', 'sent_num': 'mean'
             }).reset_index()
 
-            # ۱. نمودار ستونی مقایسه‌ای
-            st.subheader("📊 مقایسه ویژگی‌های اصلی")
+            st.subheader("📊 مقایسه چندبعدی عملکرد")
+            fig_radar = go.Figure()
             
-            # تبدیل داده برای رسم نمودار (Melt)
-            plot_data = compare_stats.melt(id_vars='professor_name_raw', 
-                                          value_vars=['rating_1', 'rating_2', 'rating_3'],
-                                          var_name='ویژگی', value_name='امتیاز')
-            
-            # نگاشت نام‌های فارسی برای نمودار
-            name_map = {'rating_1': 'کیفیت تدریس', 'rating_2': 'اخلاق', 'rating_3': 'نمره‌دهی'}
-            plot_data['ویژگی'] = plot_data['ویژگی'].map(name_map)
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c'] 
 
-            fig_comp = px.bar(
-                plot_data, 
-                x='ویژگی', 
-                y='امتیاز', 
-                color='professor_name_raw',
-                barmode='group',
-                text_auto='.1f',
-                title="مقایسه تدریس، اخلاق و نمره‌دهی"
+            categories = ['کیفیت تدریس', 'اخلاق', 'وضعیت نمره', 'سهولت امتحان', 'حس مثبت']
+            
+            for i, prof in enumerate(selected_profs):
+                prof_data = compare_df[compare_df['professor_name_standard'] == prof]
+                if not prof_data.empty:
+                    values = [
+                        prof_data['rating_1'].values[0],
+                        prof_data['rating_2'].values[0],
+                        prof_data['rating_3'].values[0],
+                        prof_data['rating_4'].values[0],
+                        prof_data['sent_num'].values[0] * 10 
+                    ]
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=values,
+                        theta=categories,
+                        fill='toself',
+                        name=prof,
+                        line=dict(color=colors[i % len(colors)]) 
+                    ))
+
+            fig_radar.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
+                showlegend=True,
+                title="تفاوت شاخص‌های اساتید در یک نگاه"
             )
-            st.plotly_chart(fig_comp, use_container_width=True)
+            st.plotly_chart(fig_radar, use_container_width=True)
+            
 
-            # ۲. جدول داده‌های دقیق
-            st.subheader("📋 جزئیات عددی")
-            # تغییر نام ستون‌ها برای نمایش در جدول
-            table_display = compare_stats.rename(columns={
-                'professor_name_raw': 'نام استاد',
+            st.subheader("⚖️ مقایسه مستقیم کیفیت تدریس و نمره‌دهی")
+            
+            plot_data = compare_df.melt(id_vars='professor_name_standard', 
+                                       value_vars=['rating_1', 'rating_3'],
+                                       var_name='Metric', value_name='Score')
+            plot_data['Metric'] = plot_data['Metric'].map({'rating_1': 'کیفیت تدریس', 'rating_3': 'نمره دهی'})
+
+            fig_bar = px.bar(
+                plot_data, 
+                x='Metric', 
+                y='Score', 
+                color='professor_name_standard',
+                barmode='group',
+                color_discrete_sequence=colors, 
+                title="مقایسه دو به دو شاخص‌های اصلی"
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+
+            st.subheader("📋 جدول داده‌های خام")
+            st.table(compare_df.rename(columns={
+                'professor_name_standard': 'نام استاد',
                 'rating_1': 'تدریس',
-                'rating_2': 'اخلاق',
-                'rating_3': 'نمره‌دهی',
-                'sentiment_score': 'شاخص حس'
-            })
-            st.dataframe(table_display.style.highlight_max(axis=0, color='lightgreen'))
-
+                'rating_3': 'نمره'
+            })[['نام استاد', 'تدریس', 'نمره']])
+            
         else:
-            st.info("💡 لطفاً نام اساتید را از لیست بالا انتخاب کنید تا مقایسه انجام شود.")
-    # --- PAGE 4: RECOMMENDER ---
-    elif page == "🤖 پیشنهاد دهنده":
-        st.title("سیستم پیشنهاد دهنده هوشمند")
-        course = st.selectbox("نام درس:", sorted(df['course_name'].unique()))
-        
-        st.write("اولویت‌های شما:")
-        w_teach = st.slider("اهمیت کیفیت تدریس", 0, 10, 5)
-        w_grade = st.slider("اهمیت نمره‌دهی آسان", 0, 10, 5)
-        w_sentiment = st.slider("اهمیت نظرات مثبت دانشجویان", 0, 10, 5)
+            st.warning("⚠️ لطفاً اساتید را انتخاب کنید.")
+elif menu == "📈 روندها و همبستگی":
+    st.title("📈 تحلیل آماری پیشرفته")
+    
+    st.subheader("۱. نقشه همبستگی (Correlation Heatmap)")
+    
+    corr = df[['rating_1', 'rating_2', 'rating_3', 'rating_4', 'rating_5', 'rating_6']].corr()
+    fig_heat = px.imshow(corr, text_auto=True, title="رابطه بین متغیرهای مختلف (مثلاً رابطه اخلاق و نمره)")
+    st.plotly_chart(fig_heat, use_container_width=True)
+    
+    st.subheader("۲. تغییرات کیفیت در طول زمان")
+    time_df = df.groupby('term')['rating_mean'].mean().reset_index()
+    fig_time = px.line(time_df, x='term', y='rating_mean', title="میانگین نمرات در ترم‌های مختلف")
+    st.plotly_chart(fig_time, use_container_width=True)
 
-        if st.button("🚀 پیشنهاد بده"):
-            course_df = df[df['course_name'] == course].groupby('professor_name_raw').agg({
-                'rating_1': 'mean', 'rating_3': 'mean', 'sentiment_score': 'mean'
-            })
-            
-            # Weighted Calculation [cite: 508]
-            course_df['score'] = (course_df['rating_1'] * w_teach) + \
-                                 (course_df['rating_3'] * w_grade) + \
-                                 (course_df['sentiment_score'] * 10 * w_sentiment)
-            
-            top_3 = course_df.sort_values('score', ascending=False).head(3)
-            
-            for name, row in top_3.iterrows():
-                with st.expander(f"🏆 پیشنهاد: {name}"):
-                    st.write(f"**دلیل پیشنهاد:** میانگین تدریس {row['rating_1']:.1f} و وضعیت نمره‌دهی مناسب.") # 
-                    st.progress(min(row['score']/200, 1.0))
-
-    # --- PAGE 5: ML ANALYSIS ---
-    elif page == "🧠 تحلیل‌های پیشرفته (ML)":
-        st.title("تحلیل داده‌کاوی")
-        
-        # Clustering Plot [cite: 492]
-        st.subheader("خوشه‌بندی اساتید (KMeans + PCA)")
-        cluster_df = get_professor_clusters(df)
-        fig_pca = px.scatter(cluster_df, x='PCA1', y='PCA2', color='Cluster_Label', 
-                             hover_name=cluster_df.index, title="نمودار پراکندگی اساتید بر اساس شباهت")
-        st.plotly_chart(fig_pca, use_container_width=True)
-        
-        # Feature Importance [cite: 480]
-        st.subheader("چه عواملی بر رضایت از تدریس اثر دارند؟")
-        model = train_prediction_model(df)
-        feat_imp = pd.Series(model.feature_importances_, index=['اخلاق', 'نمره', 'سختی', 'وضوح', 'حس مثبت']).sort_values()
-        st.bar_chart(feat_imp)
+elif menu == "🏆 پیشنهاد دهنده":
+    st.title("🏆 سیستم پیشنهاد دهنده هوشمند")
+    course = st.selectbox("نام درس را انتخاب کنید:", sorted(df['course_name'].unique()))
+    
+    c_df = df[df['course_name'] == course].groupby('professor_name_standard').agg({
+        'rating_mean': 'mean', 'sent_num': 'mean'
+    })
+    c_df['score'] = (c_df['rating_mean'] * 0.7) + (c_df['sent_num'] * 3)
+    best = c_df.sort_values('score', ascending=False)
+    st.dataframe(best[['score']].rename(columns={'score': 'امتیاز کل پیشنهادی'}))
