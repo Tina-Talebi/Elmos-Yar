@@ -46,7 +46,7 @@ export default function Search() {
     return Array.from(map.values()).map(p => ({
       ...p,
       avgRating: p.totalRating / p.reviewCount,
-      dominantGrading: Object.entries(p.gradingCounts).sort((a, b) => b[1] - a[1])[0][0],
+      dominantGrading: Object.entries(p.gradingCounts).sort((a: any, b: any) => b[1] - a[1])[0][0],
     }));
   }, [reviews, loading]);
 

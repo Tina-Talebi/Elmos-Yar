@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { name: '/', label: 'خانه', icon: Home },
   { name: '/search', label: 'جستجو', icon: Search },
   { name: '/compare', label: 'مقایسه', icon: Users },
-  { name: '/recommender', label: 'پیشنهاد', icon: Sparkles },
+  { name: '/recommend', label: 'پیشنهاد', icon: Sparkles },
 ];
 
 export const metadata: Metadata = {

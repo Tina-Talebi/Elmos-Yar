@@ -1,314 +1,173 @@
-// src/app/recommender/page.tsx
 'use client';
 
-import { useState } from 'react';
-import { useReviews, type Review } from '@/hooks/useReviews';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import React, { useState, useMemo } from 'react';
+import { useReviews } from '@/hooks/useReviews';
+import { Card, CardContent } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { User, Star, BookOpen, Search, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 
-export default function Recommender() {
-  const { reviews, loading: dataLoading } = useReviews();
-  const [loading, setLoading] = useState(false);
-  const [recommendations, setRecommendations] = useState<any[]>([]);
-  const [preferences, setPreferences] = useState({
-    department: 'all',
-    priority_easy_grading: 3,
-    priority_teaching: 3,
-    priority_interaction: 3,
-    priority_free_attendance: 3,
-    priority_light_exam: 3,
+export default function RecommenderPage() {
+  const { reviews, loading } = useReviews();
+  const [selectedCourse, setSelectedCourse] = useState<string>("");
+  const [filters, setFilters] = useState({
+    easyGrading: 3,
+    teachingQuality: 3,
+    interaction: 3,
   });
 
-  const professors = useMemo(() => {
-    if (dataLoading) return [];
-    const map = new Map<number, any>();
-    reviews.forEach((r: Review) => {
-      const id = r.professor_id;
-      if (!map.has(id)) {
-        map.set(id, {
-          id,
-          name_standard: r.professor_name_standard,
-          department: r.department,
-          review_count: 0,
-          ratings: [0, 0, 0, 0, 0, 0],
-          gradingCounts: { آسان: 0, منصفانه: 0, 'سخت‌گیر': 0 },
-          totalSentiment: 0,
-          attendance_required: r.attendance_encoded === 'حضور مهم است و تاثیر مستقیم دارد' || r.attendance_encoded === 'حضور مهم است',
-          exam_sufficient: r.exam_encoded === 1.0,
-        });
-      }
-      const p = map.get(id);
-      p.review_count++;
-      p.ratings[0] += r.rating_1;
-      p.ratings[1] += r.rating_2;
-      p.ratings[2] += r.rating_3;
-      p.ratings[3] += r.rating_4;
-      p.ratings[4] += r.rating_5;
-      p.ratings[5] += r.rating_6;
-      p.gradingCounts[r.grading_encoded]++;
-      p.totalSentiment += r.sentiment_score;
+  // ۱. استخراج لیست تمام دروس منحصر به فرد برای منوی انتخاب
+  const allCourses = useMemo(() => {
+    if (!reviews) return [];
+    const courses = new Set<string>();
+    reviews.forEach((r: any) => {
+      if (r.course_name) courses.add(r.course_name);
     });
+    return Array.from(courses).sort();
+  }, [reviews]);
 
-    return Array.from(map.values()).map(p => ({
-      ...p,
-      avg_rating_1: p.ratings[0] / p.review_count,
-      avg_rating_2: p.ratings[1] / p.review_count,
-      avg_rating_3: p.ratings[2] / p.review_count,
-      avg_rating_4: p.ratings[3] / p.review_count,
-      avg_rating_5: p.ratings[4] / p.review_count,
-      avg_rating_6: p.ratings[5] / p.review_count,
-      grading_easy_pct: Math.round((p.gradingCounts['آسان'] / p.review_count) * 100),
-      grading_fair_pct: Math.round((p.gradingCounts['منصفانه'] / p.review_count) * 100),
-      grading_hard_pct: Math.round((p.gradingCounts['سخت‌گیر'] / p.review_count) * 100),
-      avg_sentiment: p.totalSentiment / p.review_count,
-    }));
-  }, [reviews, dataLoading]);
+  // ۲. فیلتر کردن و رتبه‌بندی اساتید بر اساس درس انتخاب شده و اولویت‌ها
+  // ۲. فیلتر کردن و رتبه‌بندی اساتید بر اساس درس انتخاب شده
+const recommendedResults = useMemo(() => {
+  if (!reviews || !selectedCourse) return [];
 
-  const calculateRecommendations = () => {
-    setLoading(true);
-    setTimeout(() => {
-      let candidates = professors;
-      if (preferences.department !== 'all') {
-        candidates = candidates.filter(p => p.department === preferences.department);
-      }
-      candidates = candidates.filter(p => p.review_count >= 3);
+  const courseReviews = reviews.filter((r: any) => r.course_name === selectedCourse);
 
-      const scored = candidates.map(prof => {
-        let score = 0;
-        let explanations = [];
-
-        // نمره‌دهی آسان
-        const easyScore = (prof.grading_easy_pct / 100);
-        score += easyScore * preferences.priority_easy_grading * 2;
-        if (preferences.priority_easy_grading >= 4 && easyScore >= 0.5) {
-          explanations.push(`نمره‌دهی آسان (${prof.grading_easy_pct}%)`);
-        }
-
-        // کیفیت تدریس
-        const teachingScore = (prof.avg_rating_1 + prof.avg_rating_3) / 20;
-        score += teachingScore * preferences.priority_teaching * 2;
-        if (preferences.priority_teaching >= 4 && prof.avg_rating_1 >= 7) {
-          explanations.push(`کیفیت تدریس عالی (${prof.avg_rating_1.toFixed(1)})`);
-        }
-
-        // تعامل
-        const interactionScore = (prof.avg_rating_4 + prof.avg_rating_5) / 20;
-        score += interactionScore * preferences.priority_interaction * 2;
-        if (preferences.priority_interaction >= 4 && prof.avg_rating_4 >= 7) {
-          explanations.push(`تعامل خوب (${prof.avg_rating_4.toFixed(1)})`);
-        }
-
-        // حضور آزاد
-        const attendanceScore = prof.attendance_required ? 0 : 1;
-        score += attendanceScore * preferences.priority_free_attendance;
-        if (preferences.priority_free_attendance >= 4 && !prof.attendance_required) {
-          explanations.push('حضور و غیاب آزاد');
-        }
-
-        // امتحان سبک
-        const examScore = prof.exam_sufficient ? 1 : 0;
-        score += examScore * preferences.priority_light_exam;
-        if (preferences.priority_light_exam >= 4 && prof.exam_sufficient) {
-          explanations.push('امتحان کافی برای نمره');
-        }
-
-        // احساسات
-        const sentimentBonus = (prof.avg_sentiment + 1);
-        score += sentimentBonus * 0.5;
-        if (prof.avg_sentiment > 0.3) {
-          explanations.push('نظرات بسیار مثبت');
-        }
-
-        // تعداد نظرات
-        const reviewBonus = Math.min(p.review_count / 20, 1);
-        score += reviewBonus;
-
-        // امتیاز کلی
-        const overall = (prof.avg_rating_1 + prof.avg_rating_2 + prof.avg_rating_3 + prof.avg_rating_4 + prof.avg_rating_5 + prof.avg_rating_6) / 6;
-        score += (overall / 10) * 3;
-
-        const explanation = explanations.length > 0 
-          ? `همخوانی با اولویت‌ها: ${explanations.join('، ')}`
-          : `میانگین امتیاز کلی: ${overall.toFixed(1)}`;
-
-        return { ...prof, score, explanation };
+  const profMap = new Map();
+  courseReviews.forEach((r: any) => {
+    if (!profMap.has(r.professor_id)) {
+      profMap.set(r.professor_id, {
+        id: r.professor_id,
+        name: r.professor_name_standard,
+        dept: r.department,
+        ratings: [],
+        count: 0,
       });
+    }
+    const prof = profMap.get(r.professor_id);
+    prof.ratings.push(r);
+    prof.count++;
+  });
 
-      const top = scored.sort((a, b) => b.score - a.score).slice(0, 10);
-      setRecommendations(top);
-      setLoading(false);
-    }, 800);
-  };
+  return Array.from(profMap.values()).map(prof => {
+    // محاسبه میانگین امتیاز کلی (ستون rating_6 معمولاً امتیاز کل است)
+    const totalAvg = prof.ratings.reduce((acc: any, curr: any) => acc + (Number(curr.rating_6) || 0), 0) / prof.count;
+    
+    // میانگین شاخص‌های دیگر برای تاثیر دادن اسلایدرها در صورت نیاز
+    const gradingAvg = prof.ratings.reduce((acc: any, curr: any) => acc + (Number(curr.rating_1) || 0), 0) / prof.count;
 
-  if (dataLoading) {
-    return <div className="p-12 text-center">در حال بارگذاری داده‌ها...</div>;
-  }
+    return { 
+      ...prof, 
+      totalAvg,
+      gradingAvg 
+    };
+  })
+  // مرتب‌سازی بر اساس بالاترین امتیاز کلی (نزولی)
+  .sort((a, b) => b.totalAvg - a.totalAvg); 
+
+}, [reviews, selectedCourse, filters]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-700 px-4 py-2 rounded-full mb-4">
-            <Sparkles className="w-5 h-5" />
-            <span className="font-medium">سیستم پیشنهاددهنده هوشمند</span>
-          </div>
-          <h1 className="text-3xl font-bold mb-2">استاد مناسب شما را بیابید</h1>
-          <p className="text-slate-500 max-w-xl mx-auto">
-            با وارد کردن ترجیحات خود، بهترین اساتید بر اساس نظرات واقعی دانشجویان به شما پیشنهاد می‌شوند
-          </p>
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-12 font-sans text-right" dir="rtl">
+      <div className="max-w-6xl mx-auto">
+        
+        {/* هدر */}
+        <div className="text-center mb-12">
+            <h1 className="text-4xl font-black text-slate-900 mb-4 tracking-tight">پیشنهاد هوشمند استاد بر اساس درس</h1>
+            <p className="text-slate-500 font-medium">ابتدا درس خود را انتخاب کنید تا بهترین اساتید ارائه دهنده آن را بیابیم.</p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* فرم اولویت‌ها */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>ترجیحات شما</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">دانشکده</label>
-                  <Select value={preferences.department} onValueChange={(v) => setPreferences({...preferences, department: v})}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="همه دانشکده‌ها" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">همه دانشکده‌ها</SelectItem>
-                      {/* دانشکده‌ها رو از داده استخراج می‌کنیم */}
-                      {Array.from(new Set(professors.map(p => p.department))).map(d => (
-                        <SelectItem key={d} value={d}>{d}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">نمره‌دهی آسان (1-5)</label>
-                  <Slider
-                    value={[preferences.priority_easy_grading]}
-                    onValueChange={(v) => setPreferences({...preferences, priority_easy_grading: v[0]})}
-                    max={5}
-                    step={1}
-                  />
-                  <p className="text-sm text-right mt-1">{preferences.priority_easy_grading}</p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">کیفیت تدریس (1-5)</label>
-                  <Slider
-                    value={[preferences.priority_teaching]}
-                    onValueChange={(v) => setPreferences({...preferences, priority_teaching: v[0]})}
-                    max={5}
-                    step={1}
-                  />
-                  <p className="text-sm text-right mt-1">{preferences.priority_teaching}</p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">تعامل با دانشجو (1-5)</label>
-                  <Slider
-                    value={[preferences.priority_interaction]}
-                    onValueChange={(v) => setPreferences({...preferences, priority_interaction: v[0]})}
-                    max={5}
-                    step={1}
-                  />
-                  <p className="text-sm text-right mt-1">{preferences.priority_interaction}</p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">حضور و غیاب آزاد (1-5)</label>
-                  <Slider
-                    value={[preferences.priority_free_attendance]}
-                    onValueChange={(v) => setPreferences({...preferences, priority_free_attendance: v[0]})}
-                    max={5}
-                    step={1}
-                  />
-                  <p className="text-sm text-right mt-1">{preferences.priority_free_attendance}</p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">امتحان سبک (1-5)</label>
-                  <Slider
-                    value={[preferences.priority_light_exam]}
-                    onValueChange={(v) => setPreferences({...preferences, priority_light_exam: v[0]})}
-                    max={5}
-                    step={1}
-                  />
-                  <p className="text-sm text-right mt-1">{preferences.priority_light_exam}</p>
-                </div>
-
-                <Button onClick={calculateRecommendations} disabled={loading} className="w-full">
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'دریافت پیشنهادات'}
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* نتایج */}
-          <div className="lg:col-span-2">
-            {loading ? (
-              <Card>
-                <CardContent className="py-20 text-center">
-                  <Loader2 className="w-12 h-12 text-slate-400 mx-auto mb-4 animate-spin" />
-                  <p className="text-slate-500">در حال محاسبه بهترین پیشنهادات...</p>
-                </CardContent>
-              </Card>
-            ) : recommendations.length > 0 ? (
-              <div className="space-y-4">
-                <h2 className="text-xl font-bold">
-                  پیشنهادات ویژه شما ({recommendations.length} استاد)
-                </h2>
-                {recommendations.map((prof, idx) => (
-                  <Card key={prof.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-2xl font-bold text-amber-600">
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-lg">{prof.name_standard}</h3>
-                            <p className="text-sm text-slate-500">{prof.department}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-bold text-amber-600">{prof.avgRatingOverall.toFixed(1)}</p>
-                          <p className="text-sm text-slate-500">{prof.review_count} نظر</p>
-                        </div>
-                      </div>
-                      <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded">
-                        {prof.explanation}
-                      </p>
-                      <div className="mt-4 flex justify-end">
-                        <Link href={`/professor/${prof.id}`}>
-                          <Button variant="outline">
-                            مشاهده پروفایل
-                          </Button>
-                        </Link>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+        <div className="grid lg:grid-cols-12 gap-10">
+          
+          {/* سایدبار فیلترها */}
+          <Card className="lg:col-span-4 border-none shadow-2xl rounded-[2.5rem] bg-white sticky top-8">
+            <CardContent className="p-8">
+              {/* بخش انتخاب درس */}
+              <div className="mb-10">
+                <label className="flex items-center gap-2 font-black text-slate-700 mb-4">
+                  <BookOpen size={20} className="text-blue-600"/> انتخاب درس:
+                </label>
+                <select 
+                  className="w-full h-12 rounded-2xl bg-slate-50 border-none px-4 font-bold text-slate-600 focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                  value={selectedCourse}
+                  onChange={(e) => setSelectedCourse(e.target.value)}
+                >
+                  <option value="">-- یک درس را انتخاب کنید --</option>
+                  {allCourses.map(course => <option key={course} value={course}>{course}</option>)}
+                </select>
               </div>
+
+              {/* اسلایدرهای اولویت */}
+              <div className="space-y-10 border-t pt-8">
+                <h3 className="font-black text-slate-800 mb-6">اولویت‌های شما در این درس:</h3>
+                <PreferenceSlider label="نمره‌دهی آسان" value={filters.easyGrading} onChange={(v) => setFilters({...filters, easyGrading: v})} />
+                <PreferenceSlider label="کیفیت تدریس" value={filters.teachingQuality} onChange={(v) => setFilters({...filters, teachingQuality: v})} />
+                <PreferenceSlider label="تعامل با دانشجو" value={filters.interaction} onChange={(v) => setFilters({...filters, interaction: v})} />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* لیست نتایج */}
+          <div className="lg:col-span-8 space-y-6">
+            {!selectedCourse ? (
+                <div className="bg-white rounded-[2.5rem] p-20 text-center border-2 border-dashed border-slate-200">
+                    <Search size={64} className="mx-auto text-slate-200 mb-6" />
+                    <p className="font-black text-slate-400 text-xl">برای مشاهده پیشنهادات، ابتدا یک درس را انتخاب کنید.</p>
+                </div>
+            ) : recommendedResults.length === 0 ? (
+                <div className="p-20 text-center font-bold text-slate-400">نظری برای این درس ثبت نشده است.</div>
             ) : (
-              <Card>
-                <CardContent className="py-20 text-center">
-                  <Sparkles className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-xl font-medium mb-2">آماده دریافت پیشنهاد هستید؟</h3>
-                  <p className="text-slate-400 max-w-md mx-auto">
-                    اولویت‌های خود را از فرم سمت چپ مشخص کنید و دکمه «دریافت پیشنهادات» را بزنید
-                  </p>
-                </CardContent>
-              </Card>
+                recommendedResults.map((prof, index) => (
+                    <Card key={prof.id} className="border-none shadow-sm rounded-[2.5rem] bg-white transition-all hover:shadow-xl hover:-translate-y-1 group border-r-8 border-transparent hover:border-blue-600">
+                        <CardContent className="p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+                            <div className="flex items-center gap-6">
+                                <div className="relative">
+                                    <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 font-black text-2xl group-hover:bg-blue-50 group-hover:text-blue-500 transition-all">
+                                        <User size={32} />
+                                    </div>
+                                    <div className="absolute -top-3 -right-3 w-8 h-8 bg-slate-900 text-white rounded-full flex items-center justify-center font-black text-xs">#{index+1}</div>
+                                </div>
+                                <div className="text-right">
+                                    <h4 className="text-2xl font-black text-slate-800 mb-1">{prof.name}</h4>
+                                    <p className="text-sm text-slate-400 font-bold mb-3">{prof.dept}</p>
+                                    <Badge className="bg-blue-50 text-blue-600 border-none rounded-lg text-[10px] font-black">{prof.count} نظر در این درس</Badge>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                                <div className="text-center bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100">
+                                    <div className="flex items-center justify-center gap-1 text-amber-600">
+                                        <span className="text-3xl font-black">{prof.totalAvg.toFixed(1)}</span>
+                                        <Star size={20} className="fill-current" />
+                                    </div>
+                                    <p className="text-[10px] text-amber-500 font-black tracking-widest uppercase mt-1">امتیاز درس</p>
+                                </div>
+                                <Link href={`/professor/${prof.id}`}>
+                                    <Button variant="outline" className="rounded-2xl border-2 border-slate-100 hover:bg-slate-900 hover:text-white font-black h-12 px-6 transition-all">مشاهده پروفایل</Button>
+                                </Link>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))
             )}
           </div>
+
         </div>
       </div>
     </div>
   );
+}
+
+// کامپوننت اسلایدر کمکی
+function PreferenceSlider({ label, value, onChange }: { label: string, value: number, onChange: (v: number) => void }) {
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <span className="font-black text-slate-600 text-sm">{label}</span>
+                <span className="text-xs font-black text-blue-600">{value}</span>
+            </div>
+            <Slider defaultValue={[value]} max={5} min={1} step={1} onValueChange={(vals) => onChange(vals[0])} />
+        </div>
+    );
 }
