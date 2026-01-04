@@ -71,7 +71,7 @@ export default function ProfessorCard({ professor, compact = false }: Props) {
       : 'منصفانه';
 
   // مسیر پروفایل استاد در Next.js – اگر روت دیگری داری این را عوض کن
-  const href = `/professors/${professor.id}`;
+  const href = `/professor/${professor.id}`;
 
   return (
     <Link href={href}>

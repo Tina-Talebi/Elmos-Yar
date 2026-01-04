@@ -199,10 +199,10 @@ export default function Search() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" dir="rtl">
                 {filteredProfessors.map(prof => (
                   <Link href={`/professor/${prof.id}`} key={prof.id}>
-                    <Card className="hover:shadow-xl transition cursor-pointer h-full">
+                    <Card className="hover:shadow-xl transition cursor-pointer h-full border-r-4 border-r-blue-600">
                       <CardHeader>
                         <CardTitle className="text-lg">{prof.name}</CardTitle>
                         <CardDescription>{prof.department}</CardDescription>
@@ -236,7 +236,7 @@ export default function Search() {
           </TabsContent>
         </Tabs>
       ) : (
-        <Card className="text-center py-20">
+        <Card className="text-center py-20 border-r-4 border-r-blue-600">
           <CardContent>
             <SearchIcon className="w-20 h-20 mx-auto text-gray-300 mb-6" />
             <p className="text-xl text-gray-500">
