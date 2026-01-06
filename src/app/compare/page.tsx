@@ -170,7 +170,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useReviews, type Review } from '@/hooks/useReviews';
+import { useReviews} from '@/hooks/useReviews';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -189,58 +189,70 @@ export default function ComparePage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // اساتید با آمار کامل (از داده محلی)
   const professors = useMemo(() => {
-    if (loading) return [];
+    if (loading || !reviews || reviews.length === 0) return [];
     const map = new Map<number, any>();
-    reviews.forEach((r: Review) => {
-      const id = r.professor_id;
+  
+    reviews.forEach((r: any) => {
+      const id = Number(r.professor_id);
+      if (!id || isNaN(id)) return;
+  
       if (!map.has(id)) {
         map.set(id, {
           id,
-          name_standard: r.professor_name_standard,
-          department: r.department,
+          name_standard: r.professor_name_standard || "نامشخص",
+          department: r.department || "دانشکده",
           review_count: 0,
-          avg_rating_1: 0,
-          avg_rating_2: 0,
-          avg_rating_3: 0,
-          avg_rating_4: 0,
-          avg_rating_5: 0,
-          avg_rating_6: 0,
-          grading_easy_pct: 0,
-          grading_fair_pct: 0,
-          grading_hard_pct: 0,
-          avg_sentiment: 0,
+          rating_sum: [0, 0, 0, 0, 0, 0],
+          grading_counts: { 'آسان': 0, 'منصفانه': 0, 'سخت‌گیر': 0 },
+          sentiment_numeric_sum: 0,
         });
       }
+  
       const p = map.get(id);
       p.review_count++;
-      p.avg_rating_1 += r.rating_1;
-      p.avg_rating_2 += r.rating_2;
-      p.avg_rating_3 += r.rating_3;
-      p.avg_rating_4 += r.rating_4;
-      p.avg_rating_5 += r.rating_5;
-      p.avg_rating_6 += r.rating_6;
-      p.avg_sentiment += r.sentiment_score;
-
-      if (r.grading_encoded === 'آسان') p.grading_easy_pct++;
-      if (r.grading_encoded === 'منصفانه') p.grading_fair_pct++;
-      if (r.grading_encoded === 'سخت‌گیر') p.grading_hard_pct++;
+      
+      // ۱. محاسبات Ratings (جلوگیری از NaN)
+      for (let i = 1; i <= 6; i++) {
+        const val = parseFloat(r[`rating_${i}`]);
+        p.rating_sum[i - 1] += isNaN(val) ? 0 : val;
+      }
+  
+      // ۲. اصلاح نمره‌دهی بر اساس ستون grading (طبق تصویر دیتای شما)
+      const gText = String(r.grading || "").trim();
+      if (gText.includes('خوبی') || gText.includes('آسان') || gText.includes('بالا')) {
+        p.grading_counts['آسان']++;
+      } else if (gText.includes('منصفانه')) {
+        p.grading_counts['منصفانه']++;
+      } else if (gText.includes('سخت') || gText.includes('پایین') || gText.includes('کم')) {
+        p.grading_counts['سخت‌گیر']++;
+      } else {
+        // اگر هیچکدام نبود، به عنوان پیش‌فرض در منصفانه قرار بگیرد تا نمودار خالی نماند
+        p.grading_counts['منصفانه']++;
+      }
+  
+      // ۳. احساسات
+      const sentiment = String(r.final_sentiment).toLowerCase().trim();
+      if (sentiment === 'positive') p.sentiment_numeric_sum += 1;
+      else if (sentiment === 'negative' || sentiment === 'negetive') p.sentiment_numeric_sum -= 1;
     });
-
-    return Array.from(map.values()).map(p => ({
-      ...p,
-      avg_rating_1: p.avg_rating_1 / p.review_count,
-      avg_rating_2: p.avg_rating_2 / p.review_count,
-      avg_rating_3: p.avg_rating_3 / p.review_count,
-      avg_rating_4: p.avg_rating_4 / p.review_count,
-      avg_rating_5: p.avg_rating_5 / p.review_count,
-      avg_rating_6: p.avg_rating_6 / p.review_count,
-      grading_easy_pct: Math.round((p.grading_easy_pct / p.review_count) * 100),
-      grading_fair_pct: Math.round((p.grading_fair_pct / p.review_count) * 100),
-      grading_hard_pct: Math.round((p.grading_hard_pct / p.review_count) * 100),
-      avg_sentiment: p.avg_sentiment / p.review_count,
-    }));
+  
+    return Array.from(map.values()).map(p => {
+      const count = p.review_count || 1;
+      return {
+        ...p,
+        avg_rating_1: p.rating_sum[0] / count,
+        avg_rating_2: p.rating_sum[1] / count,
+        avg_rating_3: p.rating_sum[2] / count,
+        avg_rating_4: p.rating_sum[3] / count,
+        avg_rating_5: p.rating_sum[4] / count,
+        avg_rating_6: p.rating_sum[5] / count,
+        grading_easy_pct: Math.round((p.grading_counts['آسان'] / count) * 100),
+        grading_fair_pct: Math.round((p.grading_counts['منصفانه'] / count) * 100),
+        grading_hard_pct: Math.round((p.grading_counts['سخت‌گیر'] / count) * 100),
+        avg_sentiment: p.sentiment_numeric_sum / count,
+      };
+    });
   }, [reviews, loading]);
 
   const selectedProfessors = useMemo(() => {
@@ -446,6 +458,7 @@ export default function ComparePage() {
                           </td>
                         ))}
                       </tr>
+                      
                     </tbody>
                   </table>
                 </div>
