@@ -1,2 +1,42 @@
-# Elmos-Yar
- "Elmos Yar" is a data-driven project designed for students to explore and select courses and professors more effectively. It combines data mining, NLP, and machine learning to provide a comprehensive, interactive dashboard and a personalized recommendation system.
+# 🚀 علموص یار (Elmos-Yar)
+### داشبورد تحلیلی و سیستم پیشنهاددهنده هوشمند اساتید دانشگاه علم و صنعت ایران
+
+علموص یار یک راهکار مبتنی بر داده‌کاوی است که پیام‌های خام و غیرساختاریافته کانال‌های تلگرامی را به بصیرت‌های (Insights) ارزشمند برای دانشجویان و مدیران آموزشی تبدیل می‌کند.
+
+---
+
+## 📋 ساختار پروژه (Project Roadmap)
+
+طبق نیازمندی‌های پروژه، این سیستم در ۳ محور اصلی پیاده‌سازی شده است:
+
+### ۱. مهندسی داده و NLP (Data Engineering)
+- Parsing: استخراج خودکار داده‌ها از فایل‌های خروجی تلگرام.
+- Cleaning: پاکسازی متون، حذف ایموجی‌ها و نرمال‌سازی اسامی اساتید.
+- Sentiment Analysis: تحلیل بار معنایی نظرات دانشجویان (مثبت/منفی) با استفاده از پردازش زبان طبیعی.
+- Keyword Extraction: استخراج کلمات کلیدی پرتکرار برای هر استاد.
+
+### ۲. مدل‌های داده‌کاوی (ML Models)
+- خوشه‌بندی (Clustering): دسته‌بندی اساتید به ۳ گروه (سخت‌گیر، محبوب، معمولی) با الگوریتم K-Means.
+- کاهش ابعاد (PCA): استفاده از متد PCA برای نمایش شباهت اساتید در فضای دوبعدی.
+- یادگیری نظارتی (Regression): پیش‌بینی میزان رضایت از تدریس بر اساس متغیرهای اخلاق، نمره‌دهی و وضوح بیان.
+
+### ۳. محصول نهایی (Final Product)
+- Interactive Dashboard: داشبورد تعاملی با استفاده از Streamlit برای نمایش نمودارهای راداری و هیستوگرام‌ها.
+- Recommender System: سیستم پیشنهاددهنده هوشمند و منصفانه بر اساس وزن‌دهی کاربر به پارامترهای مختلف.
+
+---
+
+## 🛠 ابزارهای مورد استفاده
+- Backend: Python 3.9+
+- ML & Analytics: Scikit-learn, Pandas, NumPy
+- Visualization: Plotly, Matplotlib, WordCloud
+- Interface: Streamlit
+
+---
+
+## 🚀 راهنمای نصب و اجرا
+
+۱. ابتدا مخزن را Clone کنید:
+```bash
+git clone [https://github.com/Tina-Talebi/Elmos-Yar.git](https://github.com/Tina-Talebi/Elmos-Yar.git)
+cd elmos-yar
