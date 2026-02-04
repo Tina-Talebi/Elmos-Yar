@@ -16,12 +16,11 @@
 - Keyword Extraction: استخراج کلمات کلیدی پرتکرار برای هر استاد.
 
 ### ۲. مدل‌های داده‌کاوی (ML Models)
-- خوشه‌بندی (Clustering): دسته‌بندی اساتید به ۳ گروه (سخت‌گیر، محبوب، معمولی) با الگوریتم K-Means.
-- کاهش ابعاد (PCA): استفاده از متد PCA برای نمایش شباهت اساتید در فضای دوبعدی.
+- خوشه‌بندی (Clustering): دسته‌بندی اساتید به ۳ گروه (آسان،منصف،سخت‌گیر)
 - یادگیری نظارتی (Regression): پیش‌بینی میزان رضایت از تدریس بر اساس متغیرهای اخلاق، نمره‌دهی و وضوح بیان.
 
 ### ۳. محصول نهایی (Final Product)
-- Interactive Dashboard: داشبورد تعاملی با استفاده از Streamlit برای نمایش نمودارهای راداری و هیستوگرام‌ها.
+- Interactive Dashboard: داشبورد تعاملی با استفاده از Next.js برای نمایش نمودارهای راداری و هیستوگرام ها
 - Recommender System: سیستم پیشنهاددهنده هوشمند و منصفانه بر اساس وزن‌دهی کاربر به پارامترهای مختلف.
 
 ---
@@ -30,7 +29,7 @@
 - Backend: Python 3.9+
 - ML & Analytics: Scikit-learn, Pandas, NumPy
 - Visualization: Plotly, Matplotlib, WordCloud
-- Interface: Streamlit
+- Interface: Next.js 
 
 ---
 
@@ -38,5 +37,4 @@
 
 ۱. ابتدا مخزن را Clone کنید:
 ```bash
-git clone [https://github.com/Tina-Talebi/Elmos-Yar.git](https://github.com/Tina-Talebi/Elmos-Yar.git)
-cd elmos-yar
+git clone https://github.com/Tina-Talebi/Elmos-Yar.git
